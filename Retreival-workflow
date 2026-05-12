@@ -1,0 +1,259 @@
+{
+  "name": "retreival-8-may",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "5ca6707c-5e0e-4acd-8590-21966891574b",
+      "name": "Start Retrieval"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "97ed0036-2234-4571-8788-1ab89e2dbbd5",
+              "name": "=question",
+              "value": "SyncIQ jobs hang at 99% on our PowerScale cluster. What is the cause and how do we clear the metadata lock?",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        208,
+        0
+      ],
+      "id": "14f9ea48-d503-44fd-a139-5e47f10eff84",
+      "name": "User Question"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key=AIzaSyBiz44vg-4urEB1bekg4rgN0hq_O0u8joM",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "output_dimensionality",
+              "value": "3072"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"content\": {\n    \"parts\": [\n      {\n        \"text\": {{ JSON.stringify($json.question) }}\n      }\n    ]\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        416,
+        0
+      ],
+      "id": "2364de9c-766a-4293-889b-4ce0ca2d0af8",
+      "name": "Create Query Embedding"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    vector: $json.embedding.values,\n    topK: 5,\n    includeMetadata: true\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        624,
+        0
+      ],
+      "id": "80a9e580-8416-4a5c-b5a3-7d27115183ab",
+      "name": "Format Search"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://company-knowledge-gemini-77y6hmb.svc.aped-4627-b74a.pinecone.io/query",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Api-Key",
+              "value": "pcsk_GnbEj_6B9sD1ofyYg6n2kkXELHQhNYz8aB8qe8LWmtdCopPTMt8KSbZvogAbtTh8gqJ7B"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        832,
+        0
+      ],
+      "id": "56f53071-a5cb-498e-982f-0813dc1b0b74",
+      "name": "Search Memory"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "==Answer the question using the provided context. If the specific resolution is not mentioned, provide the closest relevant information from the context.\n\nContext:\n{{$node[\"Combine Context\"].json.context}}\n\nQuestion:\n{{$node[\"User Question\"].json.question}}\n\nFormat your response as:\nRoot Cause: [Explanation]\nResolution: [Step-by-step fix]",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        1248,
+        0
+      ],
+      "id": "f4fd4315-e567-4650-acb7-6cce71f79116",
+      "name": "Generate Answer"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        896,
+        192
+      ],
+      "id": "dd3dc666-ad16-4649-b8ee-3bb09b527edd",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": null,
+          "name": "",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Pinecone now returns 'matches' directly at the top level\nlet matches = $json.matches || [];\n\nif (matches.length === 0) {\n  return [{ json: { context: \"Not found in knowledge base\" } }];\n}\n\nconst context = matches\n  .map((m, i) => {\n    // Look specifically for the 'text' key we saved in the metadata\n    const text = m.metadata?.text;\n    return text ? `[Knowledge Source ${i + 1}]: ${text}` : null;\n  })\n  .filter(Boolean)\n  .join(\"\\n\\n---\\n\\n\");\n\nreturn [{ json: { context } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        0
+      ],
+      "id": "8af15958-f26f-41ed-8d8c-c95d98f5c8c9",
+      "name": "Combine Context"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Start Retrieval": {
+      "main": [
+        [
+          {
+            "node": "User Question",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "User Question": {
+      "main": [
+        [
+          {
+            "node": "Create Query Embedding",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Query Embedding": {
+      "main": [
+        [
+          {
+            "node": "Format Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Search": {
+      "main": [
+        [
+          {
+            "node": "Search Memory",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Memory": {
+      "main": [
+        [
+          {
+            "node": "Combine Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Generate Answer",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Combine Context": {
+      "main": [
+        [
+          {
+            "node": "Generate Answer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "0ae4ea9b-c4dd-409e-befe-2c20090f99f6",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "5db44c55be74898652bba04189b94346ad3065f7db757e9aa99fe4b534bd521d"
+  },
+  "id": "z1zqJGmGAKc3fy1H",
+  "tags": []
+}
