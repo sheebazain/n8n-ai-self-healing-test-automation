@@ -1,0 +1,260 @@
+{
+  "name": "my-injestion-latest",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "a5e0b98f-d0bd-41fe-a37a-10a2af492416",
+      "name": "Start Flow"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "d16dc66c-1ed9-4b98-b99e-d2f9409ff0f6",
+              "name": "text",
+              "value": "=[\n  {\n    \"issue_id\": \"STO-401\",\n    \"component\": \"Dell EMC PowerStore\",\n    \"symptom\": \"Latency spikes during high IOPS workloads on NVMe drives.\",\n    \"root_cause\": \"Firmware version 3.0 has a known conflict with specific NVMe driver interrupt coalescing settings, causing queue depth bottlenecks.\",\n    \"resolution\": \"Upgrade PowerStore OS to version 3.2.1. Disable 'Adaptive Interrupt Coalescing' on the host-side HBA driver to align with storage processor timing.\"\n  },\n  {\n    \"issue_id\": \"STO-402\",\n    \"component\": \"Unity XT Cloud Tiering\",\n    \"symptom\": \"Automated snapshot tiering to AWS S3 bucket failing with 403 Forbidden errors.\",\n    \"root_cause\": \"The IAM role associated with the Unity appliance lacks the 's3:PutObjectTagging' permission required by the latest lifecycle policy update.\",\n    \"resolution\": \"Update the AWS IAM Policy to include 's3:PutObjectTagging'. Re-validate the cloud connection in Unisphere under 'Cloud Tiering' settings.\"\n  },\n  {\n    \"issue_id\": \"STO-403\",\n    \"component\": \"PowerScale (Isilon) SyncIQ\",\n    \"symptom\": \"SyncIQ replication jobs stuck at 99% for over 4 hours.\",\n    \"root_cause\": \"Snapshot collision on the target cluster. A manual snapshot was taken during the SyncIQ worker thread finalization phase, locking the metadata.\",\n    \"resolution\": \"Identify and delete the conflicting manual snapshot on the target cluster. Set SyncIQ 'Snapshot Exclusion' rules to prevent concurrent manual snapshots during scheduled sync windows.\"\n  }\n]",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        208,
+        0
+      ],
+      "id": "36e29382-a64f-433f-8277-1e0674eeeb38",
+      "name": "Knowledge Base"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key=AIzaSyBiz44vg-4urEB1bekg4rgN0hq_O0u8joM",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"content\": {\n    \"parts\": [\n      {\n        \"text\": {{ JSON.stringify($json.chunk) }}\n      }\n    ]\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1040,
+        0
+      ],
+      "id": "fa00f52d-3b3e-4ac4-8319-62b2f92f7cf4",
+      "name": "Embeddings"
+    },
+    {
+      "parameters": {
+        "jsCode": "// 1. Get embedding values from the previous node\nconst values = $json.embedding?.values || $json.embedding;\n\n// 2. Get the actual text chunk that was just processed\nconst bugText = $json.chunk || \"No content found\";\n\nreturn [{\n  json: {\n    vectors: [{\n      // Create a unique ID\n      id: `bug_${Math.random().toString(36).substring(2, 11)}`, \n      values: values,\n      metadata: { \n        text: bugText \n      }\n    }]\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1456,
+        0
+      ],
+      "id": "cbdcdb41-105a-4355-863c-c987d9e0554a",
+      "name": "Format Vectors"
+    },
+    {
+      "parameters": {
+        "jsCode": "const text = $json.text;\n\nconst chunkSize = 1000;\n\nconst chunks = [];\n\nfor (let i = 0; i < text.length; i += chunkSize) {\n  chunks.push({\n    chunk: text.slice(i, i + chunkSize) // 👈 remove replace()\n  });\n}\n\nreturn chunks.map(c => ({ json: c }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        832,
+        0
+      ],
+      "id": "07b15c64-4c2c-4b5b-91af-535873ac1067",
+      "name": "Chunk Text"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://company-knowledge-gemini-77y6hmb.svc.aped-4627-b74a.pinecone.io/vectors/upsert",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Api-Key",
+              "value": "pcsk_GnbEj_6B9sD1ofyYg6n2kkXELHQhNYz8aB8qe8LWmtdCopPTMt8KSbZvogAbtTh8gqJ7B"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"vectors\": $json.vectors } }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1664,
+        0
+      ],
+      "id": "72292c17-4e50-4433-a263-6a6392313e22",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "jsCode": "// This maps your new storage bug data into a single string for the AI\nconst item = $json;\nconst text = `\nISSUE ID: ${item.issue_id}\nCOMPONENT: ${item.component}\nSYMPTOM: ${item.symptom}\nROOT CAUSE: ${item.root_cause}\nRESOLUTION: ${item.resolution}\n`.replace(/\\n/g, \" \"); // Removes line breaks to keep the chunking clean\n\nreturn [{ json: { text } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        624,
+        0
+      ],
+      "id": "e0275689-a256-4c95-b16b-6751bedd0aca",
+      "name": "Function node"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $json.text;\nconst parsed = JSON.parse(raw);\n\n// split into multiple items\nreturn parsed.map(bug => ({\n  json: bug\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        416,
+        0
+      ],
+      "id": "5cef6980-640f-4560-a6fe-96d227229511",
+      "name": "Split Bugs"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [\n  {\n    json: {\n      embedding: $json.embedding,\n      chunk: $node[\"Chunk Text\"].json.chunk   // 🔥 recover chunk from previous node\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1248,
+        0
+      ],
+      "id": "2d2abfa3-71d6-4041-b4ea-8af08c109550",
+      "name": "Merge Chunk + Embedding"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Start Flow": {
+      "main": [
+        [
+          {
+            "node": "Knowledge Base",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Knowledge Base": {
+      "main": [
+        [
+          {
+            "node": "Split Bugs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings": {
+      "main": [
+        [
+          {
+            "node": "Merge Chunk + Embedding",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chunk Text": {
+      "main": [
+        [
+          {
+            "node": "Embeddings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Vectors": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Function node": {
+      "main": [
+        [
+          {
+            "node": "Chunk Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Bugs": {
+      "main": [
+        [
+          {
+            "node": "Function node",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Chunk + Embedding": {
+      "main": [
+        [
+          {
+            "node": "Format Vectors",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "962a7228-01f5-4dfd-9053-721727d56ea4",
+  "meta": {
+    "instanceId": "5db44c55be74898652bba04189b94346ad3065f7db757e9aa99fe4b534bd521d"
+  },
+  "id": "ub5p1kXFxkrqYnVR",
+  "tags": []
+}
